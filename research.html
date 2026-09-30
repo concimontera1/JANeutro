@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Ricerca - JobAround</title>
+  <style>
+    :root {
+      --color-primary: #0f172a;
+      --color-accent: #2563eb;
+      --color-background: #f8fafc;
+      --color-surface: #ffffff;
+      --color-text: #334155;
+      --color-text-heading: #0f172a;
+      --color-muted: #64748b;
+      --color-border: #e2e8f0;
+      --color-danger: #ef4444;
+
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --max-width: 1200px;
+      --radius-md: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--color-background);
+      color: var(--color-text);
+      line-height: 1.6;
+      padding: 2rem 0;
+    }
+
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .export-btns { display: flex; gap: 1rem; }
+
+    .btn {
+      padding: 0.6rem 1.2rem;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      background-color: var(--color-primary);
+      color: #ffffff;
+    }
+
+    .btn:hover { opacity: 0.9; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .stat-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+    }
+
+    .stat-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--color-muted);
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      margin-bottom: 2rem;
+    }
+
+    .data-table th, .data-table td {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--color-border);
+      font-size: 0.9rem;
+    }
+
+    .data-table th {
+      background-color: #f1f5f9;
+      color: var(--color-text-heading);
+      font-weight: 600;
+    }
+
+    code { font-family: monospace; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="dashboard-header">
+      <div>
+        <h1>Dashboard Analitica Ricerca</h1>
+        <p style="color: var(--color-muted);">Esperimento: <code>jobaround_no_nudges</code> | Collection: <code>experiments/jobaround_final/sessions</code></p>
+      </div>
+      <div class="export-btns">
+        <button id="btn-export-csv" class="btn">Esporta CSV</button>
+        <button id="btn-export-json" class="btn">Esporta JSON</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">Sessioni Totali</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-mean">0s</div>
+        <div class="stat-label">Tempo Medio al Click (Mean)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-median">0s</div>
+        <div class="stat-label">Mediana (TimeToApply)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-minmax">0s / 0s</div>
+        <div class="stat-label">Min / Max</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-buttons">0 / 0</div>
+        <div class="stat-label">Sidebar / Bottom Clicks</div>
+      </div>
+    </div>
+
+    <h2 style="margin-bottom: 0.5rem;">Sessioni Registrate (Ordinamento Cronologico Crescente)</h2>
+    <p style="color: var(--color-muted); font-size: 0.85rem; margin-bottom: 1rem;">Dal primo partecipante entrato fino al più recente.</p>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Session ID</th>
+          <th>Orario Entrata (entryTime)</th>
+          <th>Orario Click (clickTime)</th>
+          <th>Time To Apply (s)</th>
+          <th>Pulsante Cliccato</th>
+        </tr>
+      </thead>
+      <tbody id="dashboard-tbody">
+        <tr>
+          <td colspan="5" style="text-align: center;">Caricamento dati Firestore in corso...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // Incolla le stesse credenziali usate in index.html
+    const firebaseConfig = {
+    apiKey: "AIzaSyDgoH45Cb5IKX2x2CHQXVm4usbA7Ayu2uk",
+    authDomain: "sitoneutro-3d518.firebaseapp.com",
+    projectId: "sitoneutro-3d518",
+    storageBucket: "sitoneutro-3d518.firebasestorage.app",
+    messagingSenderId: "340544024163",
+    appId: "1:340544024163:web:8f90b9eb668d93d3609256"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let fetchedSessionsData = [];
+
+    async function loadResearchData() {
+      const tbody = document.getElementById("dashboard-tbody");
+
+      try {
+        // Query obbligatoria ordinata per entryTime crescente
+        const sessionsRef = collection(db, "experiments", "jobaround_final", "sessions");
+        const q = query(sessionsRef, orderBy("entryTime", "asc"));
+        const querySnapshot = await getDocs(q);
+
+        fetchedSessionsData = [];
+        querySnapshot.forEach((docSnap) => {
+          fetchedSessionsData.push(docSnap.data());
+        });
+
+        renderTable(fetchedSessionsData);
+        calculateStatistics(fetchedSessionsData);
+
+      } catch (error) {
+        console.error("Errore caricamento dati:", error);
+        tbody.innerHTML = `<tr><td colspan="5" style="color: var(--color-danger); text-align: center;">Errore durante il recupero dei dati da Firestore. Verificare le credenziali o le regole di sicurezza.</td></tr>`;
+      }
+    }
+
+    function renderTable(data) {
+      const tbody = document.getElementById("dashboard-tbody");
+      if (data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Nessuna sessione trovata nella collection dell'esperimento.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.map(s => `
+        <tr>
+          <td><code>${s.sessionId}</code></td>
+          <td>${s.entryTime ? new Date(s.entryTime).toLocaleString() : 'N/A'}</td>
+          <td>${s.clickTime ? new Date(s.clickTime).toLocaleString() : 'N/A'}</td>
+          <td><strong>${s.timeToApply !== null ? s.timeToApply + 's' : 'N/A'}</strong></td>
+          <td>${s.button || 'N/A'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function calculateStatistics(data) {
+      const total = data.length;
+      document.getElementById("stat-total").textContent = total;
+
+      if (total === 0) return;
+
+      const times = data.map(d => d.timeToApply).filter(t => typeof t === 'number' && !isNaN(t));
+      
+      // Media
+      const sum = times.reduce((acc, curr) => acc + curr, 0);
+      const mean = times.length > 0 ? (sum / times.length).toFixed(2) : 0;
+      document.getElementById("stat-mean").textContent = `${mean}s`;
+
+      // Mediana
+      const sortedTimes = [...times].sort((a, b) => a - b);
+      let median = 0;
+      if (sortedTimes.length > 0) {
+        const mid = Math.floor(sortedTimes.length / 2);
+        median = sortedTimes.length % 2 !== 0 ? sortedTimes[mid] : ((sortedTimes[mid - 1] + sortedTimes[mid]) / 2);
+        median = median.toFixed(2);
+      }
+      document.getElementById("stat-median").textContent = `${median}s`;
+
+      // Min / Max
+      const min = sortedTimes.length > 0 ? Math.min(...sortedTimes).toFixed(2) : 0;
+      const max = sortedTimes.length > 0 ? Math.max(...sortedTimes).toFixed(2) : 0;
+      document.getElementById("stat-minmax").textContent = `${min}s / ${max}s`;
+
+      // Clicks
+      const sidebarClicks = data.filter(d => d.button === 'sidebar_apply').length;
+      const bottomClicks = data.filter(d => d.button === 'bottom_apply').length;
+      document.getElementById("stat-buttons").textContent = `${sidebarClicks} / ${bottomClicks}`;
+    }
+
+    function exportCSV() {
+      if (fetchedSessionsData.length === 0) return alert("Nessun dato presente.");
+      const headers = ["sessionId", "entryTime", "clickTime", "timeToApply", "timeOnPage", "button", "exitTime", "experimentId"];
+      const csvRows = [headers.join(",")];
+
+      fetchedSessionsData.forEach(row => {
+        const values = headers.map(header => {
+          const val = row[header] !== undefined && row[header] !== null ? row[header] : "";
+          return `"${String(val).replace(/"/g, '""')}"`;
+        });
+        csvRows.push(values.join(","));
+      });
+
+      downloadFile(csvRows.join("\n"), "jobaround_no_nudges_data.csv", "text/csv");
+    }
+
+    function exportJSON() {
+      if (fetchedSessionsData.length === 0) return alert("Nessun dato presente.");
+      downloadFile(JSON.stringify(fetchedSessionsData, null, 2), "jobaround_no_nudges_data.json", "application/json");
+    }
+
+    function downloadFile(content, fileName, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("btn-export-csv").addEventListener("click", exportCSV);
+    document.getElementById("btn-export-json").addEventListener("click", exportJSON);
+
+    loadResearchData();
+  </script>
+</body>
+</html>
